@@ -15,3 +15,6 @@ Takes multi-image yolo output and converts it into a useful format (tab delimite
 
 * xml_to_yolo.py 
 Converts xml output files from the ImageJ Cell Counter plugin to YOLO format annotations.
+
+* split_labels.py
+Converts a csv file of image annotations into a training and validation set.
