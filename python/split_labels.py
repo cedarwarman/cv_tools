@@ -54,7 +54,6 @@ training_num = int(round(total_images * args.train_validation_ratio))
 
 # Splitting the dataframe
 train_index = np.random.choice(len(grouped_list), size=training_num, replace=False)
-print(train_index)
 val_index = np.setdiff1d(list(range(total_images)), train_index)
 
 train = pd.concat([grouped_list[i] for i in train_index])
