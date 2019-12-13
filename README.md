@@ -18,3 +18,6 @@ Converts xml output files from the ImageJ Cell Counter plugin to YOLO format ann
 
 * split_labels.py
 Converts a csv file of image annotations into a training and validation set.
+
+* object_detection_predict.py
+Predicts bounding boxes, total class counts from frozen inference graph. Based on https://github.com/tensorflow/models/blob/master/research/object_detection/object_detection_tutorial.ipynb.
