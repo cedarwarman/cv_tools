@@ -20,4 +20,4 @@ Converts xml output files from the ImageJ Cell Counter plugin to YOLO format ann
 Converts a csv file of image annotations into a training and validation set.
 
 * tensorflow_predict.py
-Predicts bounding boxes, total class counts from frozen inference graph. Based on https://github.com/tensorflow/models/blob/master/research/object_detection/object_detection_tutorial.ipynb.
+Predicts bounding boxes, total class counts from frozen inference graph. Based on https://colab.research.google.com/github/Tony607/object_detection_demo/blob/master/tensorflow_object_detection_training_colab.ipynb#scrollTo=mz1gX19GlVW7 
