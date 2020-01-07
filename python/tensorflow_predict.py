@@ -2,7 +2,7 @@
 
 """
 tensorflow_predict.py
-From
+Adapted from:
 https://colab.research.google.com/github/Tony607/object_detection_demo/blob/master/tensorflow_object_detection_training_colab.ipynb#scrollTo=mz1gX19GlVW7
 """
 
@@ -15,6 +15,7 @@ import sys
 import tarfile
 import tensorflow as tf
 import zipfile
+import csv
 
 from collections import defaultdict
 from io import StringIO
@@ -26,13 +27,13 @@ from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
 
 # Path to frozen detection graph. This is the actual model that is used for the object detection.
-PATH_TO_CKPT = "/home/bpp/warmanma/warman_nfs0/computer_vision/tensorflow/transfer_learning_1_trained_model/model_HIGH_DETECT/frozen_inference_graph.pb"
+PATH_TO_CKPT = "/nfs0/BPP/Fowler_Lab/warman/computer_vision/tensorflow/transfer_learning_4_trained_models/config_3/1802/frozen_inference_graph.pb"
 
 # List of the strings that is used to add correct label for each box.
-PATH_TO_LABELS = "/home/bpp/warmanma/warman_nfs0/computer_vision/tensorflow/transfer_learning_1/data/label_map.pbtxt"
+PATH_TO_LABELS = "/home/bpp/warmanma/warman_nfs0/computer_vision/tensorflow/transfer_learning_4/data/label_map.pbtxt"
 
 # If you want to test the code with your images, just add images files to the PATH_TO_TEST_IMAGES_DIR.
-PATH_TO_TEST_IMAGES_DIR = "/home/bpp/warmanma/warman_nfs0/computer_vision/tensorflow/small_test_image_set"
+PATH_TO_TEST_IMAGES_DIR = "/nfs0/BPP/Fowler_Lab/warman/computer_vision/tensorflow/testing_set"
 
 assert os.path.isfile(PATH_TO_CKPT)
 assert os.path.isfile(PATH_TO_LABELS)
@@ -117,11 +118,38 @@ def run_inference_for_single_image(image, graph):
                 output_dict['detection_masks'] = output_dict['detection_masks'][0]
     return output_dict
 
+# This function is for getting out the total number of fluorescent and
+# nonfluorescent boxes detected from an output_dict. 
+def get_object_counts(output_dict, min_score):
+    detection_classes = output_dict['detection_classes']
+    detection_scores = output_dict['detection_scores']
+
+    total_fluorescent = 0
+    total_nonfluorescent = 0
+
+    for i in range(len(detection_scores)):
+        detect_class = detection_classes[i]
+        detect_score = detection_scores[i]
+        if detect_score > min_score:
+            if detect_class == 1:
+                total_fluorescent = total_fluorescent + 1
+            if detect_class == 2:
+                total_nonfluorescent = total_nonfluorescent + 1
+
+    output_list = [total_fluorescent, total_nonfluorescent]
+    return(output_list)
+
+
+# Setting some stuff up for the totals
+image_names = list()
+fluorescent_totals = list()
+nonfluorescent_totals = list()
+
 # Main basically
 for image_path in TEST_IMAGE_PATHS:
     image = Image.open(image_path)
     image_name_string = str(os.path.splitext(os.path.basename(image_path))[0])
-    print(image_name_string)
+    print('\nprocessing ' + image_name_string + '\n')
     # the array based representation of the image will be used later in order to prepare the
     # result image with boxes and labels on it.
     image_np = load_image_into_numpy_array(image)
@@ -129,7 +157,15 @@ for image_path in TEST_IMAGE_PATHS:
     image_np_expanded = np.expand_dims(image_np, axis=0)
     # Actual detection.
     output_dict = run_inference_for_single_image(image_np, detection_graph)
-    #print(output_dict)
+
+    # Adding in a bit here to count the total number of detections
+    seed_counts = get_object_counts(output_dict, 0.05)
+
+    # Adding the numbers to the output lists
+    image_names.append(image_name_string)
+    fluorescent_totals.append(seed_counts[0])
+    nonfluorescent_totals.append(seed_counts[1])
+
     # Visualization of the results of a detection.
     vis_util.visualize_boxes_and_labels_on_image_array(
         image_np,
@@ -140,8 +176,27 @@ for image_path in TEST_IMAGE_PATHS:
         instance_masks=output_dict.get('detection_masks'),
         use_normalized_coordinates=True,
         line_thickness=6,
-        max_boxes_to_draw=2000,
-        min_score_thresh=.1)
+        max_boxes_to_draw=3000,
+        min_score_thresh=.05)
     plt.figure(figsize=IMAGE_SIZE)
     plt.imsave(image_name_string + "_plot" + ".jpg", image_np)
+
+# Testing the totals lists
+print(image_names)
+print(fluorescent_totals)
+print(nonfluorescent_totals)
     
+# Printing the lists to a file
+with open('output.tsv', 'w') as output_file:
+    writer = csv.writer(output_file, delimiter='\t')
+    writer.writerows(zip(image_names, fluorescent_totals, nonfluorescent_totals))
+
+
+
+
+
+
+
+
+
+
