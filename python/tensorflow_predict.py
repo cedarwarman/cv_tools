@@ -4,6 +4,16 @@
 tensorflow_predict.py
 Adapted from:
 https://colab.research.google.com/github/Tony607/object_detection_demo/blob/master/tensorflow_object_detection_training_colab.ipynb#scrollTo=mz1gX19GlVW7
+
+Usage (note: I've been running this on a Nvidia GPU with Tensorflow 1.12-GPU 
+in a conda virtual environment):
+
+bash; conda activate tf1.12-gpu; python tensorflow_predict.py 
+    -c <checkpoint_path> 
+    -l <label_path> 
+    -d <test_image_directory> 
+    -o <output_directory>
+    -s <min_score_threshold>
 """
 
 import os
@@ -16,6 +26,7 @@ import tarfile
 import tensorflow as tf
 import zipfile
 import csv
+import argparse
 
 from collections import defaultdict
 from io import StringIO
@@ -26,20 +37,50 @@ from object_detection.utils import ops as utils_ops
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
 
+
+# Setting up arguments
+parser = argparse.ArgumentParser(description='Splits labels')
+parser.add_argument('-c', 
+                    '--checkpoint',
+                    type=str,
+                    help=('Path to frozen detection graph (checkpint)'))
+parser.add_argument('-l',
+                    '--labels',
+                    type=str,
+                    default='/home/bpp/warmanma/warman_nfs0/computer_vision/tensorflow/transfer_learning_4/data/label_map.pbtxt',
+                    help=('Path to class label map'))
+parser.add_argument('-d',
+                    '--test_image_dir',
+                    type=str,
+                    help=('Path to test image directory'))
+parser.add_argument('-o',
+                    '--output_path',
+                    type=str,
+                    help=('Path to output directory'))
+parser.add_argument('-s',
+                    '--min_score_threshold',
+                    type=float,
+                    default=0.05,
+                    help=('Minimum score threshold for plotting bounding boxes'))
+args = parser.parse_args()
+
+print(args.output_path + '\n')
+
+
 # Path to frozen detection graph. This is the actual model that is used for the object detection.
-PATH_TO_CKPT = "/nfs0/BPP/Fowler_Lab/warman/computer_vision/tensorflow/transfer_learning_4_trained_models/config_3/1802/frozen_inference_graph.pb"
+PATH_TO_CKPT = args.checkpoint
 
 # List of the strings that is used to add correct label for each box.
-PATH_TO_LABELS = "/home/bpp/warmanma/warman_nfs0/computer_vision/tensorflow/transfer_learning_4/data/label_map.pbtxt"
+PATH_TO_LABELS = args.labels
 
 # If you want to test the code with your images, just add images files to the PATH_TO_TEST_IMAGES_DIR.
-PATH_TO_TEST_IMAGES_DIR = "/nfs0/BPP/Fowler_Lab/warman/computer_vision/tensorflow/testing_set"
+PATH_TO_TEST_IMAGES_DIR = args.test_image_dir
 
 assert os.path.isfile(PATH_TO_CKPT)
 assert os.path.isfile(PATH_TO_LABELS)
 TEST_IMAGE_PATHS = glob.glob(os.path.join(PATH_TO_TEST_IMAGES_DIR, "*.*"))
 assert len(TEST_IMAGE_PATHS) > 0, 'No image found in `{}`.'.format(PATH_TO_TEST_IMAGES_DIR)
-print(TEST_IMAGE_PATHS)
+#print(TEST_IMAGE_PATHS)
 
 # Importing the frozen inference graph
 detection_graph = tf.Graph()
@@ -159,7 +200,7 @@ for image_path in TEST_IMAGE_PATHS:
     output_dict = run_inference_for_single_image(image_np, detection_graph)
 
     # Adding in a bit here to count the total number of detections
-    seed_counts = get_object_counts(output_dict, 0.05)
+    seed_counts = get_object_counts(output_dict, args.min_score_threshold)
 
     # Adding the numbers to the output lists
     image_names.append(image_name_string)
@@ -176,10 +217,10 @@ for image_path in TEST_IMAGE_PATHS:
         instance_masks=output_dict.get('detection_masks'),
         use_normalized_coordinates=True,
         line_thickness=6,
-        max_boxes_to_draw=3000,
-        min_score_thresh=.05)
+        max_boxes_to_draw=10000,
+        min_score_thresh=args.min_score_threshold)
     plt.figure(figsize=IMAGE_SIZE)
-    plt.imsave(image_name_string + "_plot" + ".jpg", image_np)
+    plt.imsave(args.output_path + '/' + image_name_string + "_plot" + ".jpg", image_np)
 
 # Testing the totals lists
 print(image_names)
@@ -187,7 +228,7 @@ print(fluorescent_totals)
 print(nonfluorescent_totals)
     
 # Printing the lists to a file
-with open('output.tsv', 'w') as output_file:
+with open(args.output_path + '/' + 'output.tsv', 'w') as output_file:
     writer = csv.writer(output_file, delimiter='\t')
     writer.writerows(zip(image_names, fluorescent_totals, nonfluorescent_totals))
 
