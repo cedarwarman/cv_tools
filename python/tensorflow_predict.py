@@ -64,8 +64,6 @@ parser.add_argument('-s',
                     help=('Minimum score threshold for plotting bounding boxes'))
 args = parser.parse_args()
 
-print(args.output_path + '\n')
-
 
 # Path to frozen detection graph. This is the actual model that is used for the object detection.
 PATH_TO_CKPT = args.checkpoint
@@ -223,9 +221,9 @@ for image_path in TEST_IMAGE_PATHS:
     plt.imsave(args.output_path + '/' + image_name_string + "_plot" + ".jpg", image_np)
 
 # Testing the totals lists
-print(image_names)
-print(fluorescent_totals)
-print(nonfluorescent_totals)
+#print(image_names)
+#print(fluorescent_totals)
+#print(nonfluorescent_totals)
     
 # Printing the lists to a file
 with open(args.output_path + '/' + 'output.tsv', 'w') as output_file:
