@@ -62,6 +62,11 @@ parser.add_argument('-s',
                     type=float,
                     default=0.05,
                     help=('Minimum score threshold for plotting bounding boxes'))
+parser.add_argument('-n',
+                    '--image_split_num',
+                    type=int,
+                    default=1,
+                    help=('Number of image subdivisions to run the object detection on.'))
 args = parser.parse_args()
 
 
@@ -126,7 +131,8 @@ def run_inference_for_single_image(image, graph):
                     tensor_dict['detection_boxes'], [0])
                 detection_masks = tf.squeeze(
                     tensor_dict['detection_masks'], [0])
-                # Reframe is required to translate mask from box coordinates to image coordinates and fit the image size.
+                # Reframe is required to translate mask from box coordinates 
+                # to image coordinates and fit the image size.
                 real_num_detection = tf.cast(
                     tensor_dict['num_detections'][0], tf.int32)
                 detection_boxes = tf.slice(detection_boxes, [0, 0], [
@@ -192,10 +198,46 @@ for image_path in TEST_IMAGE_PATHS:
     # the array based representation of the image will be used later in order to prepare the
     # result image with boxes and labels on it.
     image_np = load_image_into_numpy_array(image)
-    # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-    image_np_expanded = np.expand_dims(image_np, axis=0)
-    # Actual detection.
-    output_dict = run_inference_for_single_image(image_np, detection_graph)
+
+    split_image_np = np.vsplit(image_np, args.image_split_num)
+    
+    ### TESTING BLOCK
+    #print('\n' + 'image_np_shape' + '\n')
+    #print(image_np.shape)
+    #print('\n' + 'Split array shape:' + '\n')
+    #print(split_image_np[0].shape)
+    #print(split_image_np[1].shape)
+    #print('\n' + 'Split array total print:' + '\n')
+    #print(split_image_np)
+
+    ### END TESTING BLOCK
+
+
+    output_dict = run_inference_for_single_image(split_image_np[0], detection_graph)
+
+'''
+    # For loop will be like, for item in list of sub-arrays, do detection, then
+    # append output_dict stuff to the old output_dict
+
+    # Or maybe better, so that it builds the output_dict first, it should do
+    # the first division, then check to see if there are more, then do the
+    # remaining ones in a for loop if necessary. Then you can append the
+    # relevant secitons of the output_dict (eg. detection_boxes, classes,
+    # scores) to the output dict.
+
+
+    # Inference for the first split. If there's only one, this is the only
+    if args.image_split_num > 1:
+        # Goes through the image sub-arrays, skipping the first one since we
+        # already did that one and the new data will be appended to it.
+        for image_split in split_image_np[1:]:
+            split_output_dict = run_inference_for_single_image(image_split, detection_graph)
+            # Here will be a series of appends to the output_dict to add the
+            # new data
+        
+
+'''
+
 
     # Adding in a bit here to count the total number of detections
     seed_counts = get_object_counts(output_dict, args.min_score_threshold)
