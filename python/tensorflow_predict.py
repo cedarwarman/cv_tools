@@ -215,7 +215,6 @@ for image_path in TEST_IMAGE_PATHS:
 
     output_dict = run_inference_for_single_image(split_image_np[0], detection_graph)
 
-    '''
     # For loop will be like, for item in list of sub-arrays, do detection, then
     # append output_dict stuff to the old output_dict
 
@@ -224,6 +223,10 @@ for image_path in TEST_IMAGE_PATHS:
     # remaining ones in a for loop if necessary. Then you can append the
     # relevant secitons of the output_dict (eg. detection_boxes, classes,
     # scores) to the output dict.
+    print(output_dict['detection_boxes'])
+    print(output_dict['detection_classes'])
+    print(output_dict['detection_scores'])
+
 
 
     # Inference for the first split. If there's only one, this is the only
@@ -231,12 +234,27 @@ for image_path in TEST_IMAGE_PATHS:
         # Goes through the image sub-arrays, skipping the first one since we
         # already did that one and the new data will be appended to it.
         for image_split in split_image_np[1:]:
+            print("\nProcessing split image")
             split_output_dict = run_inference_for_single_image(image_split, detection_graph)
-            # Here will be a series of appends to the output_dict to add the
+            # Here will be a series of appends (**concatenations) to the output_dict to add the
             # new data
+            output_dict['detection_boxes'] = np.concatenate((
+                output_dict['detection_boxes'], 
+                split_output_dict['detection_boxes']))
+            output_dict['detection_classes'] = np.concatenate((
+                output_dict['detection_classes'], 
+                split_output_dict['detection_classes']))
+            output_dict['detection_scores'] = np.concatenate((
+                output_dict['detection_scores'], 
+                split_output_dict['detection_scores']))
+
+            print(output_dict['detection_boxes'])
+            print(output_dict['detection_classes'])
+            print(output_dict['detection_scores'])
+
+
         
 
-    '''
 
     seed_counts = get_object_counts(output_dict, args.min_score_threshold)
 
