@@ -215,7 +215,7 @@ for image_path in TEST_IMAGE_PATHS:
 
     output_dict = run_inference_for_single_image(split_image_np[0], detection_graph)
 
-'''
+    '''
     # For loop will be like, for item in list of sub-arrays, do detection, then
     # append output_dict stuff to the old output_dict
 
@@ -236,12 +236,12 @@ for image_path in TEST_IMAGE_PATHS:
             # new data
         
 
-'''
+    '''
 
-
-    # Adding in a bit here to count the total number of detections
     seed_counts = get_object_counts(output_dict, args.min_score_threshold)
 
+    # Adding in a bit here to count the total number of detections
+    #seed_counts = get_object_counts(output_dict, args.min_score_threshold)
     # Adding the numbers to the output lists
     image_names.append(image_name_string)
     fluorescent_totals.append(seed_counts[0])
@@ -254,7 +254,7 @@ for image_path in TEST_IMAGE_PATHS:
         output_dict['detection_classes'],
         output_dict['detection_scores'],
         category_index,
-        instance_masks=output_dict.get('detection_masks'),
+        #instance_masks=output_dict.get('detection_masks'),
         use_normalized_coordinates=True,
         line_thickness=6,
         max_boxes_to_draw=10000,
