@@ -184,6 +184,33 @@ def get_object_counts(output_dict, min_score):
     output_list = [total_fluorescent, total_nonfluorescent]
     return(output_list)
 
+# This function fixes the relative coordinates when splitting an image into
+# multiple subimages
+def fix_relative_coord(output_dict, image_split_num, image_position):
+    output_dict_adj = output_dict
+
+    # First we get a constant adjustment for the "image position". For example,
+    # if it's the first image in a series of split images (image 0), then the
+    # adjustment would be zero. If it's the second image, the adjustment would
+    # be 0.5.
+    position_adjustment = image_position * (1 / image_split_num)
+
+    # Now we adjust the y coordinates of the 'detection_boxes' ndarray, We
+    # don't need to adjust the x coordinates because we only split on the y. If
+    # later I add splitting on x, then the x coordinates need to be adjusted.
+    adjusted_boxes = output_dict['detection_boxes']
+    adjusted_boxes[:,[0,2]] *= (1 / image_split_num)
+
+    # Adding the adjustment for which split image it is (the first image
+    # doesn't need adjustment, hence the if statement).
+    if image_position > 0:
+        adjusted_boxes[:,[0,2]] += position_adjustment
+        
+
+    # Now adding back in the adjusted boxes to the original ndarray
+    output_dict_adj['detection_boxes'] = adjusted_boxes
+
+    return(output_dict_adj)
 
 # Setting some stuff up for the totals
 image_names = list()
@@ -192,6 +219,10 @@ nonfluorescent_totals = list()
 
 # Main basically
 for image_path in TEST_IMAGE_PATHS:
+
+    # Sets the image position counter for the relative coordinate fix
+    image_position_counter = 0
+
     image = Image.open(image_path)
     image_name_string = str(os.path.splitext(os.path.basename(image_path))[0])
     print('\nprocessing ' + image_name_string + '\n')
@@ -201,43 +232,34 @@ for image_path in TEST_IMAGE_PATHS:
 
     split_image_np = np.vsplit(image_np, args.image_split_num)
     
-    ### TESTING BLOCK
-    #print('\n' + 'image_np_shape' + '\n')
-    #print(image_np.shape)
-    #print('\n' + 'Split array shape:' + '\n')
-    #print(split_image_np[0].shape)
-    #print(split_image_np[1].shape)
-    #print('\n' + 'Split array total print:' + '\n')
-    #print(split_image_np)
-
-    ### END TESTING BLOCK
-
-
     output_dict = run_inference_for_single_image(split_image_np[0], detection_graph)
 
-    # For loop will be like, for item in list of sub-arrays, do detection, then
-    # append output_dict stuff to the old output_dict
-
-    # Or maybe better, so that it builds the output_dict first, it should do
-    # the first division, then check to see if there are more, then do the
-    # remaining ones in a for loop if necessary. Then you can append the
-    # relevant secitons of the output_dict (eg. detection_boxes, classes,
-    # scores) to the output dict.
-    print(output_dict['detection_boxes'])
-    print(output_dict['detection_classes'])
-    print(output_dict['detection_scores'])
-
-
+    # Fixing the relative coordinate with split image problem
+    if args.image_split_num > 1:
+        output_dict = fix_relative_coord(
+            output_dict, 
+            args.image_split_num, 
+            image_position_counter)
+        image_position_counter = image_position_counter + 1
 
     # Inference for the first split. If there's only one, this is the only
     if args.image_split_num > 1:
         # Goes through the image sub-arrays, skipping the first one since we
         # already did that one and the new data will be appended to it.
         for image_split in split_image_np[1:]:
-            print("\nProcessing split image")
+            print("\nProcessing split image. Image position counter:")
+            print(str(image_position_counter) + '\n')
+
+            # Running the inference
             split_output_dict = run_inference_for_single_image(image_split, detection_graph)
-            # Here will be a series of appends (**concatenations) to the output_dict to add the
-            # new data
+
+            # Correcting the relative coordinates
+            split_output_dict = fix_relative_coord(
+                split_output_dict, 
+                args.image_split_num, 
+                image_position_counter)
+
+            # Adding the new data to the output dict
             output_dict['detection_boxes'] = np.concatenate((
                 output_dict['detection_boxes'], 
                 split_output_dict['detection_boxes']))
@@ -252,9 +274,7 @@ for image_path in TEST_IMAGE_PATHS:
             print(output_dict['detection_classes'])
             print(output_dict['detection_scores'])
 
-
-        
-
+            image_position_counter = image_position_counter + 1
 
     seed_counts = get_object_counts(output_dict, args.min_score_threshold)
 
@@ -272,7 +292,6 @@ for image_path in TEST_IMAGE_PATHS:
         output_dict['detection_classes'],
         output_dict['detection_scores'],
         category_index,
-        #instance_masks=output_dict.get('detection_masks'),
         use_normalized_coordinates=True,
         line_thickness=6,
         max_boxes_to_draw=10000,
@@ -280,22 +299,8 @@ for image_path in TEST_IMAGE_PATHS:
     plt.figure(figsize=IMAGE_SIZE)
     plt.imsave(args.output_path + '/' + image_name_string + "_plot" + ".jpg", image_np)
 
-# Testing the totals lists
-#print(image_names)
-#print(fluorescent_totals)
-#print(nonfluorescent_totals)
-    
 # Printing the lists to a file
 with open(args.output_path + '/' + 'output.tsv', 'w') as output_file:
     writer = csv.writer(output_file, delimiter='\t')
     writer.writerows(zip(image_names, fluorescent_totals, nonfluorescent_totals))
-
-
-
-
-
-
-
-
-
 
