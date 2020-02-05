@@ -14,6 +14,7 @@ bash; conda activate tf1.12-gpu; python tensorflow_predict.py
     -d <test_image_directory> 
     -o <output_directory>
     -s <min_score_threshold>
+    -n <image_split_number>
 """
 
 import os
@@ -43,7 +44,7 @@ parser = argparse.ArgumentParser(description='Splits labels')
 parser.add_argument('-c', 
                     '--checkpoint',
                     type=str,
-                    help=('Path to frozen detection graph (checkpint)'))
+                    help=('Path to frozen detection graph (checkpoint)'))
 parser.add_argument('-l',
                     '--labels',
                     type=str,
@@ -83,7 +84,6 @@ assert os.path.isfile(PATH_TO_CKPT)
 assert os.path.isfile(PATH_TO_LABELS)
 TEST_IMAGE_PATHS = glob.glob(os.path.join(PATH_TO_TEST_IMAGES_DIR, "*.*"))
 assert len(TEST_IMAGE_PATHS) > 0, 'No image found in `{}`.'.format(PATH_TO_TEST_IMAGES_DIR)
-#print(TEST_IMAGE_PATHS)
 
 # Importing the frozen inference graph
 detection_graph = tf.Graph()
@@ -195,16 +195,16 @@ def fix_relative_coord(output_dict, image_split_num, image_position):
     # be 0.5.
     position_adjustment = image_position * (1 / image_split_num)
 
-    # Now we adjust the y coordinates of the 'detection_boxes' ndarray, We
-    # don't need to adjust the x coordinates because we only split on the y. If
-    # later I add splitting on x, then the x coordinates need to be adjusted.
+    # Now we adjust the x coordinates of the 'detection_boxes' ndarray, We
+    # don't need to adjust the y coordinates because we only split on the x. If
+    # later I add splitting on y, then the y coordinates need to be adjusted.
     adjusted_boxes = output_dict['detection_boxes']
-    adjusted_boxes[:,[0,2]] *= (1 / image_split_num)
+    adjusted_boxes[:,[1,3]] *= (1 / image_split_num)
 
     # Adding the adjustment for which split image it is (the first image
     # doesn't need adjustment, hence the if statement).
     if image_position > 0:
-        adjusted_boxes[:,[0,2]] += position_adjustment
+        adjusted_boxes[:,[1,3]] += position_adjustment
         
 
     # Now adding back in the adjusted boxes to the original ndarray
@@ -230,7 +230,7 @@ for image_path in TEST_IMAGE_PATHS:
     # result image with boxes and labels on it.
     image_np = load_image_into_numpy_array(image)
 
-    split_image_np = np.vsplit(image_np, args.image_split_num)
+    split_image_np = np.array_split(image_np, args.image_split_num, axis=1)
     
     output_dict = run_inference_for_single_image(split_image_np[0], detection_graph)
 
@@ -242,7 +242,8 @@ for image_path in TEST_IMAGE_PATHS:
             image_position_counter)
         image_position_counter = image_position_counter + 1
 
-    # Inference for the first split. If there's only one, this is the only
+    # Inference for the first split. If there's only one, this is the only one
+    # that runs.
     if args.image_split_num > 1:
         # Goes through the image sub-arrays, skipping the first one since we
         # already did that one and the new data will be appended to it.
@@ -293,7 +294,7 @@ for image_path in TEST_IMAGE_PATHS:
         output_dict['detection_scores'],
         category_index,
         use_normalized_coordinates=True,
-        line_thickness=6,
+        line_thickness=2,
         max_boxes_to_draw=10000,
         min_score_thresh=args.min_score_threshold)
     plt.figure(figsize=IMAGE_SIZE)

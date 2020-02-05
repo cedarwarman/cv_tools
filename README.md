@@ -21,3 +21,6 @@ Converts a csv file of image annotations into a training and validation set.
 
 * tensorflow_predict.py
 Predicts bounding boxes, total class counts from frozen inference graph. Based on https://colab.research.google.com/github/Tony607/object_detection_demo/blob/master/tensorflow_object_detection_training_colab.ipynb#scrollTo=mz1gX19GlVW7 
+
+* crop_annotations_and_images.py
+Takes images and annotations in PASCAL VOC format and crops them vertically into sub-images and sub-annotation files. This is to create smaller images for better training when memory is an issue.
