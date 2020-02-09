@@ -163,14 +163,26 @@ def split_annotations (xml_path, split_number, image_dimensions_list):
             xmax = current_object.xpath('bndbox/xmax')[0]
             xmin = current_object.xpath('bndbox/xmin')[0]
 
+            # If the object is totally outside the current bin, it will get
+            # deleted here.
             if (int(xmin.text) <= current_bin_min or int(xmax.text) >= current_bin_max):
                 
                 # Removing the entire object from the original tree 
                 current_object.getparent().remove(current_object)
         
                 counter += 1
-                
+            # If the object crosses the left side of the bin, it will get
+            # adjusted here to be fully inside the bin (by cropping it).
+            #elif (int
 
+            # Fixing the coordinates of the object to reflect the current bin.
+            else:
+                adjusted_xmax = int(xmax.text) - current_bin_min
+                adjusted_xmin = int(xmin.text) - current_bin_min
+
+                current_object.xpath('bndbox/xmax')[0].text = str(adjusted_xmax)
+                current_object.xpath('bndbox/xmin')[0].text = str(adjusted_xmin)
+            
         current_bin_min = current_bin_min + dimensions[bin_counter] 
         current_bin_max = current_bin_max + dimensions[bin_counter]
 
