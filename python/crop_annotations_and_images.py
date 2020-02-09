@@ -19,11 +19,13 @@ crop_annotations_and_images.py
 
 import os
 import io
+import cv2
 from copy import deepcopy
 from pathlib import Path
 import numpy as np
 import argparse
 from lxml import etree
+from PIL import Image
 
 # Setting up arguments
 parser = argparse.ArgumentParser(description='Crop annotations and imagmes')
@@ -44,25 +46,67 @@ args = parser.parse_args()
 
 
 """
+============================
+load_image_into_numpy_array
+============================
+"""
+def load_image_into_numpy_array(image):
+    imported_image = cv2.imread(image)
+    return(imported_image)
+
+
+"""
+====================
+split_image_np_array
+====================
+"""
+def split_image_np_array(image, image_split_num):
+    split_image = np.array_split(image, image_split_num, axis=1)
+    return(split_image)
+
+
+"""
 =================
-Split_annotations
+save_split_images
 =================
 """
+def save_split_images(split_image, output_dir, image_name):
+    counter = 1
+    for image in split_image:
+        output_string = output_dir + "/" + image_name + "_s" + str(counter) + ".png"
+        cv2.imwrite(output_string, image)
+        counter += 1
+    
 
-def split_annotations (xml_path, split_number):
+
+"""
+=================
+split_annotations
+=================
+"""
+def split_annotations (xml_path, split_number, image_dimensions_list):
     # Importing the xml
     tree = etree.parse(xml_path) 
 
+    # Getting the name of the xml file
+    xml_basename = tree.xpath('filename')[0].text[:-4]
+
+    # Getting the dimensions for this image, set of x dimensions based on the
+    # split number.
+    dimensions = image_dimensions_list.get(xml_basename)
+
+    print("dimensions are ")
+    print(dimensions)
+
     # Grabbing the width of the image and making a variable for the current min
     # and max values of the bins.
-    image_width = int(tree.xpath('//width')[0].text)
-    bin_width = image_width // split_number 
+    #image_width = int(tree.xpath('//width')[0].text)
+    #bin_width = image_width // split_number 
     current_bin_min = 0
-    current_bin_max = bin_width
+    current_bin_max = dimensions[0]
 
     # Setting up empty lists to contain the split xml files
     tree_list = []
-    updated_tree_list = []
 
     # Copying the tree to the list (each list entry will be the annotations or
     # one sub-image). I need to use deepcopy because all the copies point to
@@ -71,7 +115,7 @@ def split_annotations (xml_path, split_number):
     for x in range(0, split_number):
         tree_to_add = deepcopy(tree)
         tree_list.append(tree_to_add)
- 
+
     # Going through the split trees one by one.
     # TODO Make a counter and some "acceptable" ymin and ymax values the the
     # bounding boxes have to fall into or else they will get deleted, or
@@ -79,6 +123,9 @@ def split_annotations (xml_path, split_number):
     # something added to them when it does the next tree.
 
     counter = 0
+    image_name_counter = 1
+    bin_counter = 1
+    xml_width_counter = 0
 
     for split_tree in tree_list:
         print("\n\n\nProcessing tree\n")
@@ -86,9 +133,12 @@ def split_annotations (xml_path, split_number):
         print("Current bin min: " + str(current_bin_min))
         print("Current bin max: " + str(current_bin_max))
 
-        # Setting up the bin
+        # Fixing the xml filename
+        new_filename = xml_basename + "_s" + str(image_name_counter) + ".png"
+        split_tree.xpath('//filename')[0].text = new_filename
 
-
+        # Fixing the xml width
+        split_tree.xpath('//width')[0].text = str(dimensions[xml_width_counter])
 
         # Grabbing the objects from the xml
         object_list = split_tree.xpath('//object')
@@ -107,24 +157,13 @@ def split_annotations (xml_path, split_number):
         #       </bndbox>
         #   </object> 
         
-        #no_delete_counter = 0
-        #delete_counter = 0
         for entry in range(0, len(object_list)):
             current_object = object_list[entry]
-            #print(current_object)
             
             xmax = current_object.xpath('bndbox/xmax')[0]
             xmin = current_object.xpath('bndbox/xmin')[0]
 
-            #print(xmax.text)
-            #print(xmin.text)
-            #print('\n')
-            #print("no delete counter = " + str(no_delete_counter))
-            #no_delete_counter += 1
-            
-
             if (int(xmin.text) <= current_bin_min or int(xmax.text) >= current_bin_max):
-                #print("removing bounding box")
                 
                 # Removing the entire object from the original tree 
                 current_object.getparent().remove(current_object)
@@ -132,17 +171,16 @@ def split_annotations (xml_path, split_number):
                 counter += 1
                 
 
-        current_bin_min = current_bin_min + bin_width
-        current_bin_max = current_bin_max + bin_width
+        current_bin_min = current_bin_min + dimensions[bin_counter] 
+        current_bin_max = current_bin_max + dimensions[bin_counter]
 
         print("Total deleted boxes: " + str(counter))
         counter = 0
+        image_name_counter += 1
+        xml_width_counter += 1
 
     return(tree_list)
         
-
-            
-
 
 """
 ====
@@ -151,20 +189,56 @@ Main
 """
 
 def main():
-    # Setting up the paths
+    # Making the output directories
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    Path(args.output_dir + "/annotations").mkdir(parents=True, exist_ok=True)
+    
+    # Setting up some paths
     input_dir = Path(args.input_dir)
     annotations_dir = input_dir / "annotations"
 
+    # Setting up a dictionary to store the final cropped dimensions (the reason
+    # I did it like this is that the final dimensions come from the image
+    # cropping for loop, but I want to store them in a place that can be pulled
+    # from the xml loop. Not sure if this is the most efficient way, but it
+    # works). For now I'll just store the x, because the y should all be the
+    # same.
+    image_dimensions = {}
+
+    # Cropping the images
+    for image_file in os.listdir(input_dir):
+        image_path = str(input_dir / image_file)
+        if image_path.endswith(".png"):
+            print("Processing image file: " + str(image_file) + '\n')
+            current_image = str(image_file[:-4])
+
+            # Importing and splitting up the image
+            image = load_image_into_numpy_array(image_path)
+            split_images = split_image_np_array(image, args.image_split_num)
+
+            # Saving the images
+            save_split_images(split_images, args.output_dir, current_image)
+
+            # Getting the exact dimensions of the split image (they might vary
+            # a littlebased on rounding). This will be used on the xml files to
+            # make the dimensions elements reflect the cropped image.
+            x_coord_list = []
+            for sub_image in split_images:
+                x_coord_list.append(sub_image.shape[1])
+            image_dimensions[current_image] = x_coord_list
+            print(image_dimensions)
+
     # Going through each annotation file
     for xml_file in os.listdir(annotations_dir):
+        print("Processing xml file: " + str(xml_file) + '\n')
         xml_path = str(annotations_dir / xml_file)
-        output_tree = split_annotations(xml_path, 3) 
+        output_tree = split_annotations(xml_path, 3, image_dimensions) 
         
         # Printing out the subtrees
         tree_number_print = 1
         for output in output_tree:
-            tree_name_output_string = (xml_file[:-4] + "_s" +
-                str(tree_number_print) + ".xml")
+            tree_name_output_string = (args.output_dir + "/annotations/" + 
+                xml_file[:-4] + "_s" + str(tree_number_print) + ".xml")
 
             xml_string = etree.tostring(output, pretty_print=True)
 
@@ -172,17 +246,6 @@ def main():
                 f.write(xml_string)
 
             tree_number_print += 1
-
-
-
-
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
