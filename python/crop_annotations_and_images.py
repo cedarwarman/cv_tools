@@ -133,6 +133,9 @@ def split_annotations (xml_path, split_number, image_dimensions_list):
         print("Current bin min: " + str(current_bin_min))
         print("Current bin max: " + str(current_bin_max))
 
+        # Min box size (boxes smaller than this width get deleted)
+        min_box_size = 30
+
         # Fixing the xml filename
         new_filename = xml_basename + "_s" + str(image_name_counter) + ".png"
         split_tree.xpath('//filename')[0].text = new_filename
@@ -171,26 +174,41 @@ def split_annotations (xml_path, split_number, image_dimensions_list):
                 # Removing the entire object from the original tree 
                 current_object.getparent().remove(current_object)
         
+                # This is just for a print I think, delete when finished
                 counter += 1
 
             # If the object crosses the left side of the bin, it will get
             # adjusted here to be fully inside the bin (by cropping it).
             elif ((int(xmax.text) > current_bin_min) and
                 (int(xmin.text) < current_bin_min)):
+
                 adjusted_xmax = int(xmax.text) - current_bin_min
                 adjusted_xmin = current_bin_min - current_bin_min
 
-                current_object.xpath('bndbox/xmax')[0].text = str(adjusted_xmax)
-                current_object.xpath('bndbox/xmin')[0].text = str(adjusted_xmin)
+                # Checking for tiny boxes. If they're too small they get
+                # removed
+                if (adjusted_xmax - adjusted_xmin) < min_box_size:
+                    current_object.getparent().remove(current_object)
+
+                else:
+                    current_object.xpath('bndbox/xmax')[0].text = str(adjusted_xmax)
+                    current_object.xpath('bndbox/xmin')[0].text = str(adjusted_xmin)
 
             # Same as previous, but with the right side of the bin
             elif ((int(xmax.text) > current_bin_max) and
                 (int(xmin.text) < current_bin_max)):
+
                 adjusted_xmax = current_bin_max - current_bin_min
                 adjusted_xmin = int(xmin.text) - current_bin_min
-
-                current_object.xpath('bndbox/xmax')[0].text = str(adjusted_xmax)
-                current_object.xpath('bndbox/xmin')[0].text = str(adjusted_xmin)
+                
+                # Checking for tiny boxes. If they're too small they get
+                # removed
+                if (adjusted_xmax - adjusted_xmin) < min_box_size:
+                    current_object.getparent().remove(current_object)
+                
+                else:
+                    current_object.xpath('bndbox/xmax')[0].text = str(adjusted_xmax)
+                    current_object.xpath('bndbox/xmin')[0].text = str(adjusted_xmin)
 
             # Finally, for the boxes that are totally inside the bin, just
             # fixing the relative coordinates
