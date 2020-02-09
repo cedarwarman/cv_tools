@@ -165,18 +165,37 @@ def split_annotations (xml_path, split_number, image_dimensions_list):
 
             # If the object is totally outside the current bin, it will get
             # deleted here.
-            if (int(xmin.text) <= current_bin_min or int(xmax.text) >= current_bin_max):
+            if ((int(xmax.text) <= current_bin_min) or
+                (int(xmin.text) >= current_bin_max)):
                 
                 # Removing the entire object from the original tree 
                 current_object.getparent().remove(current_object)
         
                 counter += 1
+
             # If the object crosses the left side of the bin, it will get
             # adjusted here to be fully inside the bin (by cropping it).
-            #elif (int
+            elif ((int(xmax.text) > current_bin_min) and
+                (int(xmin.text) < current_bin_min)):
+                adjusted_xmax = int(xmax.text) - current_bin_min
+                adjusted_xmin = current_bin_min - current_bin_min
 
-            # Fixing the coordinates of the object to reflect the current bin.
-            else:
+                current_object.xpath('bndbox/xmax')[0].text = str(adjusted_xmax)
+                current_object.xpath('bndbox/xmin')[0].text = str(adjusted_xmin)
+
+            # Same as previous, but with the right side of the bin
+            elif ((int(xmax.text) > current_bin_max) and
+                (int(xmin.text) < current_bin_max)):
+                adjusted_xmax = current_bin_max - current_bin_min
+                adjusted_xmin = int(xmin.text) - current_bin_min
+
+                current_object.xpath('bndbox/xmax')[0].text = str(adjusted_xmax)
+                current_object.xpath('bndbox/xmin')[0].text = str(adjusted_xmin)
+
+            # Finally, for the boxes that are totally inside the bin, just
+            # fixing the relative coordinates
+            elif ((int(xmax.text) < current_bin_max) and 
+                (int(xmin.text) > current_bin_min)):
                 adjusted_xmax = int(xmax.text) - current_bin_min
                 adjusted_xmin = int(xmin.text) - current_bin_min
 
