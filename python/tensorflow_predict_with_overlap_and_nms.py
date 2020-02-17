@@ -147,7 +147,8 @@ def get_splits(image_width, split_number, overlap):
         left_split = []
         left_split.append(0)
 
-        # The other side of the left split will be the width plus the overlap
+        # The other side of the left split will be the width (minus 1 to fix
+        # the 0 index start) plus the overlap
         left_split.append(no_overlap_width + overlap_width)
         image_splits.append(left_split)
 
@@ -201,6 +202,24 @@ def get_splits(image_width, split_number, overlap):
         #print("Middle split 1 is: " + str(image_splits[2][0]) + ", " + str(image_splits[2][1]))
         #print("Right split is: " + str(image_splits[3][0]) + ", " + str(image_splits[3][1]))
     return(image_splits)
+    
+
+# The fuction that actually splits the images
+def split_image(image_np_array, split_list):
+    print(image_np_array.shape)
+    array_list = []
+
+    for split_nums in split_list:
+        left_border = int(split_nums[0])
+        right_border = int(split_nums[1])
+        print("Borders:")
+        print(left_border)
+        print(right_border)
+        sub_array = image_np_array[:,left_border:right_border,:]
+        array_list.append(sub_array)
+
+    return(array_list)
+
 
 def run_inference_for_single_image(image, graph):
     with graph.as_default():
@@ -277,22 +296,120 @@ def get_object_counts(output_dict, min_score):
     output_list = [total_fluorescent, total_nonfluorescent]
     return(output_list)
 
+# This function removes the boxes that are near the edges of the splits, in an
+# attempt to remove boxes that are only a fraction of a seed.
+def remove_edge_boxes(output_dict, list_of_splits, image_position):
+    output_dict_boxes_removed = output_dict
+    # This is how close the edge of a box can be to the edge of the sub-image
+    # before they get deleted
+    edge_crop_width = 40
+    image_width = list_of_splits[-1][1]
+    relative_edge_crop_width = edge_crop_width / image_width
+    #print("relative_edge_crop_width is: ")
+    #print(relative_edge_crop_width)
+
+    array_counter = 0
+    delete_list = []
+
+    # Pulling out the elements of the output_dict that will get modified
+    adjusted_boxes = output_dict['detection_boxes']
+    adjusted_scores = output_dict['detection_scores']
+    adjusted_classes = output_dict['detection_classes']
+
+    # On the leftmost set of boxes, only ones near the right side will be
+    # deleted
+    if image_position == 0:
+        print("\n\nleft image")
+        for box in adjusted_boxes:
+            xmax = box[3] 
+            if xmax > (1 - relative_edge_crop_width):
+                # Adding the index to the list of indexes to be deleted
+                delete_list.append(array_counter)
+            array_counter += 1
+        print(len(delete_list))
+        
+        adjusted_boxes = np.delete(adjusted_boxes, delete_list, 0)
+        adjusted_scores = np.delete(adjusted_scores, delete_list, 0)
+        adjusted_classes = np.delete(adjusted_classes, delete_list, 0)
+
+    # Rightmost set
+    elif image_position == (len(list_of_splits) - 1):
+        print("\n\nright image")
+        for box in adjusted_boxes:
+            xmin = box[1] 
+            if xmin < relative_edge_crop_width:
+                # Adding the index to the list of indexes to be deleted
+                delete_list.append(array_counter)
+            array_counter += 1
+        print(len(delete_list))
+        
+        adjusted_boxes = np.delete(adjusted_boxes, delete_list, 0)
+        adjusted_scores = np.delete(adjusted_scores, delete_list, 0)
+        adjusted_classes = np.delete(adjusted_classes, delete_list, 0)
+
+    # All the middle sets
+    else:
+        print("\n\nmiddle image")
+        for box in adjusted_boxes:
+            xmax = box[3] 
+            xmin = box[1] 
+            if (xmin < relative_edge_crop_width) or (xmax > (1 - relative_edge_crop_width)):
+                # Adding the index to the list of indexes to be deleted
+                delete_list.append(array_counter)
+            array_counter += 1
+        print(len(delete_list))
+        
+        adjusted_boxes = np.delete(adjusted_boxes, delete_list, 0)
+        adjusted_scores = np.delete(adjusted_scores, delete_list, 0)
+        adjusted_classes = np.delete(adjusted_classes, delete_list, 0)
+    
+    # Adding the modified arrays back into the output_dict
+    print("Original array length: ")
+    print(output_dict_boxes_removed['detection_boxes'].shape[0])
+
+    output_dict_boxes_removed['detection_boxes'] = adjusted_boxes
+    output_dict_boxes_removed['detection_scores'] = adjusted_scores
+    output_dict_boxes_removed['detection_classes'] = adjusted_classes
+    output_dict_boxes_removed['num_detections'] = adjusted_boxes.shape[0]
+
+    print("Modified array length: ")
+    print(output_dict_boxes_removed['detection_boxes'].shape[0])
+
+    return(output_dict_boxes_removed)
+
+
 # This function fixes the relative coordinates when splitting an image into
 # multiple subimages
-def fix_relative_coord(output_dict, image_split_num, image_position):
+def fix_relative_coord(output_dict, list_of_splits, image_position):
     output_dict_adj = output_dict
 
-    # First we get a constant adjustment for the "image position". For example,
-    # if it's the first image in a series of split images (image 0), then the
-    # adjustment would be zero. If it's the second image, the adjustment would
-    # be 0.5.
-    position_adjustment = image_position * (1 / image_split_num)
+    # Getting the image width out of the list of splits (it's the right side of
+    # the last split).
+    image_width = list_of_splits[-1][1]
+
+    # Getting the split width
+    split_width = list_of_splits[image_position][1] - list_of_splits[image_position][0]
+    #print("\n\nsplit_width: ")
+    #print(split_width)
+    #print("\n\n\n")
+    #print("list_of_splits[image_position][0]")
+    #print(list_of_splits[image_position][0])
+    #print("list_of_splits[image_position][1]")
+    #print(list_of_splits[image_position][1])
+
+    # First we get a constant adjustment for the "image position". The
+    # adjustment is where the left side of the current image starts, relative
+    # to the entire image. We can get this from the list_of_splits.
+    position_adjustment = list_of_splits[image_position][0] / image_width
+    #print("Position adjustment")
+    #print(position_adjustment)
 
     # Now we adjust the x coordinates of the 'detection_boxes' ndarray, We
     # don't need to adjust the y coordinates because we only split on the x. If
     # later I add splitting on y, then the y coordinates need to be adjusted.
+    # This adjustment "shrinks" the relative coordinates down.
     adjusted_boxes = output_dict['detection_boxes']
-    adjusted_boxes[:,[1,3]] *= (1 / image_split_num)
+    adjusted_boxes[:,[1,3]] *= (split_width / image_width)
 
     # Adding the adjustment for which split image it is (the first image
     # doesn't need adjustment, hence the if statement).
@@ -305,6 +422,81 @@ def fix_relative_coord(output_dict, image_split_num, image_position):
 
     return(output_dict_adj)
 
+
+# Non-max suppression function
+def do_non_max_suppression(input_dictionary):
+    # The actual nms comes from Tensorflow
+    nms_vec = tf.image.non_max_suppression(
+        input_dictionary['detection_boxes'],
+        input_dictionary['detection_scores'],
+        100000,
+        iou_threshold=0.5,
+        score_threshold=float('-inf'),
+        name=None)
+
+    # Converting into a ndarray
+    nms_vec_ndarray = tf.Session().run(nms_vec)
+
+    print("\n\n\nthe nms tensor is:")
+    print(nms_vec)
+    print("the nms ndarray is:")
+    print(nms_vec_ndarray)
+    print(len(nms_vec_ndarray))
+    print("the length of the input array is:")
+    print(len(output_dict['detection_boxes']))
+    print("\n\n\n")
+
+    # Indexing the input dictionary with the output of non_max_suppression,
+    # which is the list of boxes (and score, class) to keep.
+    out_dic = input_dictionary.copy()
+    out_dic['detection_boxes'] = input_dictionary['detection_boxes'][nms_vec_ndarray].copy() 
+    out_dic['detection_scores'] = input_dictionary['detection_scores'][nms_vec_ndarray].copy() 
+    out_dic['detection_classes'] = input_dictionary['detection_classes'][nms_vec_ndarray].copy() 
+
+    # Change to output dictionary
+    return(out_dic)
+
+# Function for deleting boxes that are unrealistically large.
+def delete_giant_boxes(input_dictionary, list_of_splits):
+    image_width = list_of_splits[-1][1]
+    x_box_max = 300
+    rel_x_box_max = x_box_max / image_width
+    y_box_max = 400
+    rel_y_box_max = y_box_max / image_width
+    coord_list = input_dictionary['detection_boxes']
+    coord_counter = 0
+    delete_list = []
+
+    for coord in coord_list:
+        xmin = coord[1]
+        xmax = coord[3]
+        x = xmax - xmin
+
+        ymin = coord[0]
+        ymax = coord[2]
+        y = ymax - ymin
+
+        if (x > rel_x_box_max) or (y > rel_y_box_max):
+            delete_list.append(coord_counter)
+            
+
+        coord_counter += 1
+
+    # Deleting the boxes that are too big
+    print("Number of unreasonably large boxes deleted:")
+    print(len(delete_list))
+    print("\n")
+    out_dic = input_dictionary.copy()
+
+    if len(delete_list) > 0:
+        print("deleting boxes in original dict")
+        out_dic['detection_boxes'] = np.delete(input_dictionary['detection_boxes'], delete_list, 0) 
+        out_dic['detection_classes'] = np.delete(input_dictionary['detection_classes'], delete_list, 0) 
+        out_dic['detection_scores'] = np.delete(input_dictionary['detection_scores'], delete_list, 0) 
+
+    return(out_dic)
+
+
 # Setting some stuff up for the totals
 image_names = list()
 fluorescent_totals = list()
@@ -312,7 +504,6 @@ nonfluorescent_totals = list()
 
 # Main basically
 for image_path in TEST_IMAGE_PATHS:
-
     # Sets the image position counter for the relative coordinate fix
     image_position_counter = 0
 
@@ -330,23 +521,36 @@ for image_path in TEST_IMAGE_PATHS:
     print(splits)
         
     # Here's where the actual splitting happens
-    split_image_np = np.array_split(image_np, args.image_split_num, axis=1)
+    #split_image_np = np.array_split(image_np, args.image_split_num, axis=1)
+    split_image_np = split_image(image_np, splits)
+    print("\nThe split image array list looks like:")
+    for array in split_image_np:
+        print(array.shape)
     
     # Running the inference for the first split, or in the case of a split number
     # of 1, the only split.
     output_dict = run_inference_for_single_image(split_image_np[0], detection_graph)
-
-    # Fixing the relative coordinate with split image problem
+    
     if args.image_split_num > 1:
+        # Getting rid of edge boxes for the first split image
+        output_dict = remove_edge_boxes(
+            output_dict, 
+            splits,
+            image_position_counter)
+
+        # Fixing the relative coordinates for the first split image
         output_dict = fix_relative_coord(
             output_dict, 
-            args.image_split_num, 
+            splits, 
             image_position_counter)
+
         image_position_counter = image_position_counter + 1
 
-    # Inference for the first split. If there's only one, this is the only one
-    # that runs.
+    # Inference for the following splits, if there's more than 1.
     if args.image_split_num > 1:
+        # Fixing the relative coordinates for the first image
+        
+
         # Goes through the image sub-arrays, skipping the first one since we
         # already did that one and the new data will be appended to it.
         for image_split in split_image_np[1:]:
@@ -355,11 +559,17 @@ for image_path in TEST_IMAGE_PATHS:
 
             # Running the inference
             split_output_dict = run_inference_for_single_image(image_split, detection_graph)
-
+        
+            # Getting rid of edge boxes
+            split_output_dict = remove_edge_boxes(
+                split_output_dict, 
+                splits,
+                image_position_counter)
+            
             # Correcting the relative coordinates
             split_output_dict = fix_relative_coord(
                 split_output_dict, 
-                args.image_split_num, 
+                splits, 
                 image_position_counter)
 
             # Adding the new data to the output dict
@@ -379,10 +589,19 @@ for image_path in TEST_IMAGE_PATHS:
 
             image_position_counter = image_position_counter + 1
 
-    seed_counts = get_object_counts(output_dict, args.min_score_threshold)
+    # I'll delete any giant boxes here
+    output_dict = delete_giant_boxes(output_dict, splits)
+
+    # Now the I have the output from the sub-images all combined together, I'll
+    # do another round of non-maximum suppression to remove the redundant boxes
+    # on the edges. This should also fix the problem where the model predicts
+    # fluorescent and nonfluorescent for the same seed. It should keep the one
+    # with the higher detection score.
+    output_dict = do_non_max_suppression(output_dict)
 
     # Adding in a bit here to count the total number of detections
-    #seed_counts = get_object_counts(output_dict, args.min_score_threshold)
+    seed_counts = get_object_counts(output_dict, args.min_score_threshold)
+
     # Adding the numbers to the output lists
     image_names.append(image_name_string)
     fluorescent_totals.append(seed_counts[0])
