@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
 
+#########################################################
+#  cv_tools
+#
+#  Copyright 2020
+#
+#  Cedar Warman
+#
+#  Department of Botany & Plant Pathology
+#  Oregon State University
+#  Corvallis, OR 97331
+#
+# This program is not free software; it can be used and modified
+# for non-profit only.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+#########################################################
+
 """
 This version will impliment overlap in image subdivisions and non-maximum
 suppression. Eventually it will replace the other version, but for now there
@@ -296,6 +316,49 @@ def get_object_counts(output_dict, min_score):
     output_list = [total_fluorescent, total_nonfluorescent]
     return(output_list)
 
+# This function is for saving a file with more detailed information about the
+# bounding boxes and confidence scores
+def get_boxes_and_scores(output_dict, image_name_string):
+    image_name = image_name_string
+    detection_boxes = output_dict['detection_boxes']
+    detection_scores = output_dict['detection_scores']
+    detection_classes = output_dict['detection_classes']
+
+    x_min_list = []
+    x_max_list = []
+    y_min_list = []
+    y_max_list = []
+    score_list = []
+    class_list = []
+    name_list = []
+
+    for i in range(len(detection_scores)):
+        x_min = detection_boxes[i][1]
+        x_max = detection_boxes[i][3]
+        y_min = detection_boxes[i][0]
+        y_max = detection_boxes[i][2]
+        score = detection_scores[i]
+        class_num = detection_classes[i]
+
+        x_min_list.append(x_min)
+        x_max_list.append(x_max)
+        y_min_list.append(y_min)
+        y_max_list.append(y_max)
+        score_list.append(score)
+        class_list.append(class_num)
+        name_list.append(image_name)
+
+    output_list = [x_min_list,
+        x_max_list,
+        y_min_list,
+        y_max_list,
+        score_list,
+        class_list,
+        name_list]
+
+    return(output_list)
+    
+
 # This function removes the boxes that are near the edges of the splits, in an
 # attempt to remove boxes that are only a fraction of a seed.
 def remove_edge_boxes(output_dict, list_of_splits, image_position):
@@ -502,6 +565,11 @@ image_names = list()
 fluorescent_totals = list()
 nonfluorescent_totals = list()
 
+# Setting up a list for the detailed output
+detailed_results = [["x_min"], ["x_max"], 
+    ["y_min"], ["y_max"], 
+    ["score"], ["class"], ["name"]]
+
 # Main basically
 for image_path in TEST_IMAGE_PATHS:
     # Sets the image position counter for the relative coordinate fix
@@ -607,6 +675,17 @@ for image_path in TEST_IMAGE_PATHS:
     fluorescent_totals.append(seed_counts[0])
     nonfluorescent_totals.append(seed_counts[1])
 
+    # Getting detailed info about the boxes and scores for ouput (replace this
+    # with ndarrays)
+    image_detailed_results = get_boxes_and_scores(output_dict, image_name_string)
+    detailed_results[0].extend(image_detailed_results[0])
+    detailed_results[1].extend(image_detailed_results[1])
+    detailed_results[2].extend(image_detailed_results[2])
+    detailed_results[3].extend(image_detailed_results[3])
+    detailed_results[4].extend(image_detailed_results[4])
+    detailed_results[5].extend(image_detailed_results[5])
+    detailed_results[6].extend(image_detailed_results[6])
+
     # Visualization of the results of a detection.
     vis_util.visualize_boxes_and_labels_on_image_array(
         image_np,
@@ -621,8 +700,19 @@ for image_path in TEST_IMAGE_PATHS:
     plt.figure(figsize=IMAGE_SIZE)
     plt.imsave(args.output_path + '/' + image_name_string + "_plot" + ".jpg", image_np)
 
-# Printing the lists to a file
+# Printing the summary lists to a file
 with open(args.output_path + '/' + 'output.tsv', 'w') as output_file:
     writer = csv.writer(output_file, delimiter='\t')
     writer.writerows(zip(image_names, fluorescent_totals, nonfluorescent_totals))
+
+# Printing the detailed lists to a file
+with open(args.output_path + '/' + 'detailed_output.tsv', 'w') as output_file:
+    writer = csv.writer(output_file, delimiter='\t')
+    writer.writerows(zip(detailed_results[0],
+        detailed_results[1],
+        detailed_results[2],
+        detailed_results[3],
+        detailed_results[4],
+        detailed_results[5],
+        detailed_results[6]))
 
